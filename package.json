@@ -5,12 +5,15 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "bridge": "node midi-bridge/server.js"
   },
   "dependencies": {
     "three": "^0.159.0"
   },
   "devDependencies": {
-    "vite": "^5.0.0"
+    "vite": "^5.0.0",
+    "midi": "^2.0.0",
+    "ws": "^8.0.0"
   }
 }

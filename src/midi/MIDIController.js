@@ -293,6 +293,161 @@ class MIDIController {
         break;
     }
   }
+
+  // ── MIDI Bridge (WebSocket) ─────────────────────────────────────────────
+
+  /**
+   * ローカルの MIDI ブリッジサーバー (npm run bridge) に接続する。
+   * Chrome の Web MIDI API が WMS 仮想ポートを認識できない場合の代替。
+   * @param {string} wsUrl - ブリッジの WebSocket URL (既定: ws://localhost:9001)
+   */
+  connectBridge(wsUrl = 'ws://localhost:9001') {
+    if (this.bridgeSocket) {
+      this.bridgeSocket.close();
+      this.bridgeSocket = null;
+    }
+
+    this._setBridgeStatus('connecting');
+
+    let ws;
+    try {
+      ws = new WebSocket(wsUrl);
+    } catch (e) {
+      console.error('[Bridge] 接続失敗:', e);
+      this._setBridgeStatus('error');
+      return;
+    }
+
+    this.bridgeSocket     = ws;
+    this.bridgeInputPorts  = [];
+    this.bridgeOutputPorts = [];
+
+    ws.onopen = () => {
+      console.log('[Bridge] ✓ 接続完了');
+      this._setBridgeStatus('connected');
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        this._handleBridgeMessage(JSON.parse(event.data));
+      } catch (e) {
+        console.error('[Bridge] メッセージ解析エラー:', e);
+      }
+    };
+
+    ws.onclose = () => {
+      console.log('[Bridge] 切断');
+      this.bridgeSocket = null;
+      this._setBridgeStatus('disconnected');
+    };
+
+    ws.onerror = () => {
+      console.error('[Bridge] エラー — "npm run bridge" が起動しているか確認してください');
+      this._setBridgeStatus('error');
+    };
+  }
+
+  disconnectBridge() {
+    if (this.bridgeSocket) {
+      this.bridgeSocket.close();
+      this.bridgeSocket = null;
+    }
+  }
+
+  /** ブリッジ経由で MIDI メッセージを送信する (→ DAW) */
+  sendMIDIViaBridge(data) {
+    if (this.bridgeSocket && this.bridgeSocket.readyState === WebSocket.OPEN) {
+      this.bridgeSocket.send(JSON.stringify({ type: 'midi_out', data: Array.from(data) }));
+    }
+  }
+
+  /** ブリッジ側の MIDI 入力ポートを選択する */
+  selectBridgeInputPort(portId) {
+    if (this.bridgeSocket && this.bridgeSocket.readyState === WebSocket.OPEN) {
+      this.bridgeSocket.send(JSON.stringify({ type: 'open_input', id: portId }));
+    }
+  }
+
+  /** ブリッジ側の MIDI 出力ポートを選択する */
+  selectBridgeOutputPort(portId) {
+    if (this.bridgeSocket && this.bridgeSocket.readyState === WebSocket.OPEN) {
+      this.bridgeSocket.send(JSON.stringify({ type: 'open_output', id: portId }));
+    }
+  }
+
+  /** ブリッジにポートの再スキャンを要求する */
+  rescanBridgePorts() {
+    if (this.bridgeSocket && this.bridgeSocket.readyState === WebSocket.OPEN) {
+      this.bridgeSocket.send(JSON.stringify({ type: 'rescan' }));
+    }
+  }
+
+  _handleBridgeMessage(msg) {
+    switch (msg.type) {
+      case 'ports':
+        this.bridgeInputPorts  = msg.inputs  || [];
+        this.bridgeOutputPorts = msg.outputs || [];
+        this._updateBridgePortSelects(msg.activeInput, msg.activeOutput);
+        break;
+
+      case 'midi_in':
+        // ブリッジ経由で受け取った MIDI → 既存のハンドラで処理
+        if (Array.isArray(msg.data) && msg.data.length >= 2) {
+          this.handleMIDIMessage({ data: new Uint8Array(msg.data) });
+        }
+        break;
+
+      case 'status':
+        if (msg.inputName)  console.log(`[Bridge] 入力: ${msg.inputName}`);
+        if (msg.outputName) console.log(`[Bridge] 出力: ${msg.outputName}`);
+        break;
+    }
+  }
+
+  _setBridgeStatus(status) {
+    const el = document.getElementById('midi-bridge-status');
+    if (!el) return;
+    const labels = {
+      connected:    '🟢 接続済み',
+      connecting:   '🟡 接続中...',
+      disconnected: '⚫ 未接続',
+      error:        '🔴 エラー (ブリッジ未起動?)',
+    };
+    el.textContent = labels[status] ?? status;
+  }
+
+  _updateBridgePortSelects(activeInput, activeOutput) {
+    const inputSel  = document.getElementById('midi-bridge-input-select');
+    const outputSel = document.getElementById('midi-bridge-output-select');
+
+    if (inputSel) {
+      inputSel.innerHTML = '<option value="">-- 選択してください --</option>';
+      this.bridgeInputPorts.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value   = p.id;
+        opt.textContent = p.name;
+        if (p.id === activeInput) opt.selected = true;
+        inputSel.appendChild(opt);
+      });
+      inputSel.onchange = (e) => {
+        if (e.target.value !== '') this.selectBridgeInputPort(parseInt(e.target.value));
+      };
+    }
+
+    if (outputSel) {
+      outputSel.innerHTML = '<option value="">-- 選択してください --</option>';
+      this.bridgeOutputPorts.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value   = p.id;
+        opt.textContent = p.name;
+        if (p.id === activeOutput) opt.selected = true;
+        outputSel.appendChild(opt);
+      });
+      outputSel.onchange = (e) => {
+        if (e.target.value !== '') this.selectBridgeOutputPort(parseInt(e.target.value));
+      };
+    }
+  }
 }
 
 

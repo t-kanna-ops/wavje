@@ -1037,6 +1037,110 @@ class WavJeApplication {
       this.midiController.updateDeviceList();
     }, 500);
 
+    // ── MIDI Bridge (WMS対応 / loopMIDI代替) ───────────────────────────
+    const bridgeDiv = document.createElement('div');
+    bridgeDiv.className = 'control-group';
+    bridgeDiv.style.marginTop = '14px';
+    bridgeDiv.style.padding = '10px';
+    bridgeDiv.style.border = '1px solid #334';
+    bridgeDiv.style.borderRadius = '6px';
+    bridgeDiv.style.backgroundColor = '#0d0d1a';
+
+    const bridgeTitle = document.createElement('div');
+    bridgeTitle.textContent = '🔌 MIDI Bridge (WMS対応)';
+    bridgeTitle.style.fontWeight = 'bold';
+    bridgeTitle.style.marginBottom = '6px';
+    bridgeTitle.style.fontSize = '12px';
+    bridgeTitle.style.color = '#aac';
+    bridgeDiv.appendChild(bridgeTitle);
+
+    const bridgeHint = document.createElement('div');
+    bridgeHint.style.fontSize = '10px';
+    bridgeHint.style.color = '#667';
+    bridgeHint.style.marginBottom = '8px';
+    bridgeHint.textContent = 'loopMIDIが見えない場合: npm run bridge を実行してから接続';
+    bridgeDiv.appendChild(bridgeHint);
+
+    // ステータス
+    const bridgeStatus = document.createElement('div');
+    bridgeStatus.id = 'midi-bridge-status';
+    bridgeStatus.textContent = '⚫ 未接続';
+    bridgeStatus.style.fontSize = '11px';
+    bridgeStatus.style.marginBottom = '8px';
+    bridgeDiv.appendChild(bridgeStatus);
+
+    // 接続 URL 入力
+    const urlRow = document.createElement('div');
+    urlRow.style.display = 'flex';
+    urlRow.style.gap = '4px';
+    urlRow.style.marginBottom = '6px';
+    const urlInput = document.createElement('input');
+    urlInput.type = 'text';
+    urlInput.value = 'ws://localhost:9001';
+    urlInput.style.flex = '1';
+    urlInput.style.fontSize = '11px';
+    urlInput.style.padding = '3px 6px';
+    urlInput.style.backgroundColor = '#111';
+    urlInput.style.color = '#ccc';
+    urlInput.style.border = '1px solid #444';
+    urlInput.style.borderRadius = '3px';
+    const connectBtn = document.createElement('button');
+    connectBtn.textContent = '接続';
+    connectBtn.style.fontSize = '11px';
+    connectBtn.style.padding = '3px 8px';
+    connectBtn.onclick = () => {
+      if (this.midiController.bridgeSocket &&
+          this.midiController.bridgeSocket.readyState <= 1) {
+        this.midiController.disconnectBridge();
+        connectBtn.textContent = '接続';
+      } else {
+        this.midiController.connectBridge(urlInput.value.trim());
+        connectBtn.textContent = '切断';
+      }
+    };
+    urlRow.appendChild(urlInput);
+    urlRow.appendChild(connectBtn);
+    bridgeDiv.appendChild(urlRow);
+
+    // 入力ポート選択
+    const bridgeInLabel = document.createElement('label');
+    bridgeInLabel.style.fontSize = '11px';
+    bridgeInLabel.style.display = 'block';
+    bridgeInLabel.style.marginBottom = '4px';
+    bridgeInLabel.textContent = '受信ポート (MIDI→ブラウザ): ';
+    const bridgeInSelect = document.createElement('select');
+    bridgeInSelect.id = 'midi-bridge-input-select';
+    bridgeInSelect.style.width = '100%';
+    bridgeInSelect.style.fontSize = '11px';
+    bridgeInSelect.innerHTML = '<option value="">-- 接続後に表示 --</option>';
+    bridgeInLabel.appendChild(bridgeInSelect);
+    bridgeDiv.appendChild(bridgeInLabel);
+
+    // 出力ポート選択
+    const bridgeOutLabel = document.createElement('label');
+    bridgeOutLabel.style.fontSize = '11px';
+    bridgeOutLabel.style.display = 'block';
+    bridgeOutLabel.style.marginBottom = '4px';
+    bridgeOutLabel.textContent = '送信ポート (ブラウザ→DAW): ';
+    const bridgeOutSelect = document.createElement('select');
+    bridgeOutSelect.id = 'midi-bridge-output-select';
+    bridgeOutSelect.style.width = '100%';
+    bridgeOutSelect.style.fontSize = '11px';
+    bridgeOutSelect.innerHTML = '<option value="">-- 接続後に表示 --</option>';
+    bridgeOutLabel.appendChild(bridgeOutSelect);
+    bridgeDiv.appendChild(bridgeOutLabel);
+
+    // 再スキャンボタン
+    const bridgeRescanBtn = document.createElement('button');
+    bridgeRescanBtn.textContent = '🔄 ポート再スキャン';
+    bridgeRescanBtn.style.marginTop = '6px';
+    bridgeRescanBtn.style.width = '100%';
+    bridgeRescanBtn.style.fontSize = '11px';
+    bridgeRescanBtn.onclick = () => this.midiController.rescanBridgePorts();
+    bridgeDiv.appendChild(bridgeRescanBtn);
+
+    deviceControls.appendChild(bridgeDiv);
+
     // BPM Detection
     const bpmDiv = document.createElement('div');
     bpmDiv.className = 'control-group';
