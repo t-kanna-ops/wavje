@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WavJe - Audio-Reactive VJ</title>
+</head>
+<body>
+  <div id="loading-message">
+    <div>Loading WavJe...</div>
+    <div class="status" id="load-status">Initializing...</div>
+  </div>
+  <div id="error-message"></div>
+
+  <div id="main-container">
+    <!-- Top Section: 1920x640 -->
+    <div id="top-section">
+      <!-- Left: Deck Panel 480x640 -->
+      <div id="deck-panel">
+        <div class="panel-title">DECKS & MIXER</div>
+        <div id="deck-controls"></div>
+      </div>
+
+      <!-- Center: Clip Grid + Transport + Waveform 960x640 -->
+      <div id="center-panel">
+        <div id="clip-grid"></div>
+        <div id="transport-panel"></div>
+        <div id="waveform-panel">
+          <canvas id="waveform-canvas"></canvas>
+        </div>
+      </div>
+
+      <!-- Right: Preview + Composition 480x640 -->
+      <div id="right-panel">
+        <div id="preview-container">
+          <div id="canvas-container"></div>
+        </div>
+        <div id="composition-settings">
+          <div class="panel-title">COMPOSITION SETTINGS</div>
+          <div id="comp-controls"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Section: 1920x440 -->
+    <div id="bottom-section">
+      <!-- Left: Device Settings 480x440 -->
+      <div id="device-panel">
+        <div class="panel-title">DEVICE SETTINGS</div>
+        <div id="device-controls"></div>
+      </div>
+
+      <!-- Center: Inspector 960x440 -->
+      <div id="inspector-panel">
+        <div class="panel-title">CLIP INSPECTOR</div>
+        <div id="inspector-content">
+          <p style="color: #666;">Select a clip to view details</p>
+        </div>
+      </div>
+
+      <!-- Right: Project Management 480x440 -->
+      <div id="project-panel">
+        <div class="panel-title">PROJECT MANAGEMENT</div>
+        <div id="project-controls"></div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
