@@ -1025,21 +1025,17 @@ class WavJeApplication {
     deviceControls.appendChild(midiDiv);
     this.midiSelect = midiSelect;
 
-    // Populate MIDI devices
+    // Wire up change handler immediately (survives innerHTML rebuilds in updateDeviceList)
+    midiSelect.onchange = (e) => {
+      if (e.target.value) {
+        this.midiController.selectDevice(e.target.value);
+      }
+    };
+
+    // Populate MIDI devices (deferred so MIDI init has time to complete)
     setTimeout(() => {
-      const devices = this.midiController.getDevices();
-      devices.forEach(device => {
-        const option = document.createElement('option');
-        option.value = device.id;
-        option.textContent = device.name;
-        midiSelect.appendChild(option);
-      });
-      midiSelect.onchange = (e) => {
-        if (e.target.value) {
-          this.midiController.selectDevice(e.target.value);
-        }
-      };
-    }, 1000);
+      this.midiController.updateDeviceList();
+    }, 500);
 
     // BPM Detection
     const bpmDiv = document.createElement('div');

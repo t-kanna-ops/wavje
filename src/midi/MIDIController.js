@@ -49,6 +49,9 @@ class MIDIController {
     if (devices.length > 0 && !this.selectedDevice) {
       this.selectDevice(devices[0].id);
     }
+
+    // Populate the UI dropdown (DOM may not be ready yet; use rAF to defer)
+    requestAnimationFrame(() => this.updateDeviceList());
   }
   
   setupStateChangeHandler() {
