@@ -21,7 +21,8 @@ class ClipMatrix {
           row,
           col,
           name: '',
-          lastAccess: 0
+          lastAccess: 0,
+          position: { x: 0, y: 0, z: 0 },
         };
       }
     }
@@ -141,6 +142,7 @@ class ClipMatrix {
           source: 'current', // 'current' | 'file' | 'mic'
           band: 'all',       // 'all' | 'low' | 'lowMid' | 'highMid' | 'high' | 'volume' | 'peak'
         },
+        position: { x: 0, y: 0, z: 0 },
       };
     }
   }

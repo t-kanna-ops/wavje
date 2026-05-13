@@ -165,7 +165,7 @@ class Layer {
         const data = settings ? this._filterAudioData(audioData, settings) : audioData;
         this.content.instance.update(data, deltaTime);
       }
-      return;
+      // fall through to apply clip position below
     }
     
     // Video texture continuous update
@@ -184,6 +184,12 @@ class Layer {
           console.log(`Layer ${this.index}: Video not ready (state: ${video.readyState})`);
         }
       }
+    }
+
+    // Apply clip position from clipRef (supports audio-reactive / modulation)
+    if (this.clipRef && this.clipRef.position) {
+      const { x, y, z } = this.clipRef.position;
+      this.mesh.position.set(x, y, -this.index * 0.001 + z);
     }
   }
 

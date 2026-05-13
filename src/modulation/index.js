@@ -255,6 +255,22 @@ class ModulationMatrix {
               ));
             }
           }
+        } else if (mod.targetType === 'clipPosition' && clipMatrix) {
+          // Apply to clip position (x / y / z)
+          const parts = String(mod.targetId).split('-');
+          const row = parseInt(parts[0]);
+          const col = parseInt(parts[1]);
+          const clip = clipMatrix.getClip(row, col);
+          if (clip) {
+            if (!clip.position) clip.position = { x: 0, y: 0, z: 0 };
+            const axis = mod.paramName; // 'x', 'y', or 'z'
+            if (axis === 'x' || axis === 'y' || axis === 'z') {
+              const useCustomRange = mod.min !== 0 || mod.max !== 1;
+              const finalMin = useCustomRange ? mod.min : -10;
+              const finalMax = useCustomRange ? mod.max : 10;
+              clip.position[axis] = finalMin + sourceValue * (finalMax - finalMin);
+            }
+          }
         }
         // layer / mixer are handled by applyGlobalModulations()
       } catch (error) {

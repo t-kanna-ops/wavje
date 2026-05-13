@@ -1906,6 +1906,7 @@ class WavJeApplication {
     }
     this._inspectorGenParamSliders = [];
     this._inspectorEffectParamSliders = [];
+    this._inspectorPosSliders = [];
 
     const inspectorContent = document.getElementById('inspector-content');
     if (!inspectorContent) return;
@@ -2110,7 +2111,86 @@ class WavJeApplication {
     }
     
     inspectorContent.appendChild(info);
-    
+
+    // ── Position Section ─────────────────────────────────────────
+    {
+      const clip = this.selectedClip;
+      if (!clip.position) clip.position = { x: 0, y: 0, z: 0 };
+
+      const posSection = document.createElement('div');
+      posSection.style.cssText = 'margin-top:14px;padding:10px;background:#0d0d1a;border-radius:4px;border:1px solid #334;';
+
+      const posTitle = document.createElement('div');
+      posTitle.style.cssText = 'font-weight:bold;color:#88aaff;margin-bottom:10px;font-size:12px;letter-spacing:.05em;';
+      posTitle.textContent = '↔ POSITION';
+      posSection.appendChild(posTitle);
+
+      const axisConfigs = [
+        { axis: 'x', label: 'X', color: '#ff8888', min: -10, max: 10 },
+        { axis: 'y', label: 'Y', color: '#88ff88', min: -10, max: 10 },
+        { axis: 'z', label: 'Z', color: '#8899ff', min: -10, max: 10 },
+      ];
+
+      axisConfigs.forEach(({ axis, label, color, min, max }) => {
+        const row = document.createElement('div');
+        row.style.cssText = 'margin-bottom:8px;';
+
+        const labelRow = document.createElement('div');
+        labelRow.style.cssText = 'display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;';
+
+        const labelEl = document.createElement('span');
+        labelEl.textContent = label;
+        labelEl.style.color = color;
+
+        const valueEl = document.createElement('span');
+        valueEl.style.color = color;
+        const curVal = clip.position[axis];
+        valueEl.textContent = curVal.toFixed(2);
+
+        labelRow.appendChild(labelEl);
+        labelRow.appendChild(valueEl);
+
+        const slider = document.createElement('input');
+        slider.type = 'range';
+        slider.min = min;
+        slider.max = max;
+        slider.step = '0.01';
+        slider.value = curVal;
+        slider.style.cssText = `width:100%;accent-color:${color};`;
+        slider._isDragging = false;
+        slider.addEventListener('mousedown',  () => { slider._isDragging = true; });
+        slider.addEventListener('touchstart', () => { slider._isDragging = true; });
+        slider.addEventListener('mouseup',    () => { slider._isDragging = false; });
+        slider.addEventListener('touchend',   () => { slider._isDragging = false; });
+        slider.oninput = () => {
+          const v = parseFloat(slider.value);
+          clip.position[axis] = v;
+          valueEl.textContent = v.toFixed(2);
+        };
+
+        this._inspectorPosSliders.push({ slider, valueEl, clip, axis });
+
+        row.appendChild(labelRow);
+        row.appendChild(slider);
+        posSection.appendChild(row);
+      });
+
+      // Reset button
+      const resetBtn = document.createElement('button');
+      resetBtn.textContent = 'Reset Position';
+      resetBtn.style.cssText = 'width:100%;padding:4px;background:#1a1a2e;border:1px solid #334;font-size:11px;cursor:pointer;margin-top:2px;';
+      resetBtn.onclick = () => {
+        clip.position = { x: 0, y: 0, z: 0 };
+        this._inspectorPosSliders.forEach(({ slider, valueEl, axis: a }) => {
+          slider.value = 0;
+          valueEl.textContent = '0.00';
+        });
+      };
+      posSection.appendChild(resetBtn);
+
+      inspectorContent.appendChild(posSection);
+    }
+
     // Phase 2: Effect Insert section
     const effectTitle = document.createElement('h4');
     effectTitle.textContent = 'Effect Inserts';
@@ -2165,6 +2245,16 @@ class WavJeApplication {
             valueDisplay.textContent = clamped.toFixed(2);
           }
         }
+        // Sync position sliders with modulation changes
+        for (const { slider, valueEl, clip, axis } of this._inspectorPosSliders) {
+          if (slider._isDragging) continue;
+          if (!clip.position) continue;
+          const v = clip.position[axis];
+          if (Math.abs(parseFloat(slider.value) - v) > 0.005) {
+            slider.value = v;
+            valueEl.textContent = v.toFixed(2);
+          }
+        }
         this._inspectorEffectSyncRAF = requestAnimationFrame(effectSyncLoop);
       };
       this._inspectorEffectSyncRAF = requestAnimationFrame(effectSyncLoop);
@@ -2176,6 +2266,17 @@ class WavJeApplication {
   /** Returns [{targetType, targetId, paramName, label, def?}] for every tweakable param in a clip */
   _getClipParams(clip) {
     const params = [];
+    // Clip position parameters (always available for all clip types)
+    if (clip.id) {
+      ['x', 'y', 'z'].forEach(axis => {
+        params.push({
+          targetType: 'clipPosition',
+          targetId: clip.id,
+          paramName: axis,
+          label: `[Pos] ${axis.toUpperCase()}`,
+        });
+      });
+    }
     // Effect parameters
     if (clip.effectManager) {
       clip.effectManager.getAllEffects().forEach(effect => {
@@ -2272,6 +2373,7 @@ class WavJeApplication {
       if (mod.targetType === 'generator') return `[Gen] ${mod.paramName}`;
       if (mod.targetType === 'mixer') return `[CF] Crossfader`;
       if (mod.targetType === 'layer') return `[${mod.targetId}] Opacity`;
+      if (mod.targetType === 'clipPosition') return `[Pos] ${mod.paramName.toUpperCase()} (${mod.targetId})`;
       return `${mod.targetType} / ${mod.paramName}`;
     })();
     const srcSpan = document.createElement('span');
