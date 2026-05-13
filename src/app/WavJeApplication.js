@@ -3743,7 +3743,6 @@ class WavJeApplication {
   openCompositionWindow() {
     const width = this.outputWidth || 1920;
     const height = this.outputHeight || 1080;
-    const fps = this.outputFPS || 60;
 
     // Close existing window if open
     if (this.compositionWindow && !this.compositionWindow.closed) {
@@ -3753,7 +3752,6 @@ class WavJeApplication {
     const win = window.open('', 'WavJe_Composition',
       `width=${width},height=${height},menubar=no,toolbar=no,location=no,status=no,scrollbars=no`);
     if (!win) {
-      // Popup was blocked – update status in UI
       if (this._compWindowStatusEl) {
         this._compWindowStatusEl.textContent = '⚠ ポップアップがブロックされています。下のボタンで手動で開いてください。';
         this._compWindowStatusEl.style.color = '#ff4444';
@@ -3762,146 +3760,42 @@ class WavJeApplication {
       return;
     }
 
+    // Use a 2D canvas in the output window and blit from the main renderer canvas
     win.document.write(`<!DOCTYPE html><html><head>
       <title>WavJe – Composition Output</title>
-      <style>body{margin:0;padding:0;overflow:hidden;background:#000;}canvas{display:block;width:100%;height:100%;}</style>
+      <style>*{margin:0;padding:0;}body{overflow:hidden;background:#000;}canvas{display:block;width:100vw;height:100vh;}</style>
     </head><body><canvas id="output-canvas"></canvas></body></html>`);
     win.document.close();
 
     const outputCanvas = win.document.getElementById('output-canvas');
     outputCanvas.width = width;
     outputCanvas.height = height;
-
-    const outputRenderer = new THREE.WebGLRenderer({ canvas: outputCanvas, antialias: true, alpha: false });
-    outputRenderer.setSize(width, height);
-    outputRenderer.setPixelRatio(1);
+    this._outputCtx = outputCanvas.getContext('2d');
 
     this.compositionWindow = win;
 
     if (this._compWindowStatusEl) {
-      this._compWindowStatusEl.textContent = `✓ 出力ウィンドウ: ${width}×${height} @ ${fps}fps`;
+      this._compWindowStatusEl.textContent = `✓ 出力ウィンドウ: ${width}×${height}`;
       this._compWindowStatusEl.style.color = '#44ff88';
     }
-    console.log(`✓ Composition window opened: ${width}x${height} @ ${fps}fps`);
-
-    this.startOutputRendering(win, outputRenderer, fps);
+    console.log(`✓ Composition window opened (blit mode): ${width}x${height}`);
   }
 
   openVideoOutputWindow() {
     // Legacy: delegate to new method
     this.openCompositionWindow();
   }
-  
-  startOutputRendering(outputWindow, outputRenderer, targetFPS) {
-    const targetFrameTime = 1000 / targetFPS;
-    let lastFrameTime = performance.now();
-    
-    const renderLoop = () => {
-      if (outputWindow.closed) {
-        console.log('✓Output window closed');
-        return;
-      }
-      
-      const now = performance.now();
-      const deltaTime = now - lastFrameTime;
-      
-      if (deltaTime >= targetFrameTime) {
-        // Render scene with effects applied
-        const hasEffects = this.masterEffectManager && this.masterEffectManager.getAllEffects().length > 0;
-        
-        if (!hasEffects) {
-          // No effects - render directly
-          const scene = this.renderEngine.getScene();
-          const camera = this.renderEngine.camera;
-          if (scene && camera) {
-            outputRenderer.autoClear = true;
-            outputRenderer.setRenderTarget(null);
-            outputRenderer.render(scene, camera);
-          }
-        } else {
-          // With effects - copy the rendering logic from RenderEngine
-          const scene = this.renderEngine.getScene();
-          const camera = this.renderEngine.camera;
-          
-          if (!scene || !camera) {
-            lastFrameTime = now;
-            return;
-          }
-          
-          // Create render targets if needed
-          if (!outputRenderer._renderTarget1) {
-            const width = outputRenderer.domElement.width;
-            const height = outputRenderer.domElement.height;
-            outputRenderer._renderTarget1 = new THREE.WebGLRenderTarget(width, height, {
-              minFilter: THREE.LinearFilter,
-              magFilter: THREE.LinearFilter,
-              format: THREE.RGBAFormat
-            });
-            outputRenderer._renderTarget2 = new THREE.WebGLRenderTarget(width, height, {
-              minFilter: THREE.LinearFilter,
-              magFilter: THREE.LinearFilter,
-              format: THREE.RGBAFormat
-            });
-          }
-          
-          // Render scene to first render target
-          outputRenderer.autoClear = false;
-          outputRenderer.setRenderTarget(outputRenderer._renderTarget1);
-          outputRenderer.clear();
-          outputRenderer.render(scene, camera);
-          
-          // Apply effects in chain using main engine's effect materials
-          const effects = this.masterEffectManager.getAllEffects().filter(e => e.enabled);
-          let readBuffer = outputRenderer._renderTarget1;
-          let writeBuffer = outputRenderer._renderTarget2;
-          
-          const effectQuad = this.renderEngine.effectQuad;
-          const effectScene = this.renderEngine.effectScene;
-          const effectCamera = this.renderEngine.effectCamera;
-          
-          for (let i = 0; i < effects.length; i++) {
-            const effect = effects[i];
-            const material = this.renderEngine.effectMaterials.get(effect.id);
-            
-            if (!material) continue;
-            
-            effectQuad.material = material;
-            material.uniforms.tDiffuse.value = readBuffer.texture;
-            
-            // Copy uniforms
-            for (let key in effect.uniforms) {
-              if (key !== 'tDiffuse' && material.uniforms[key]) {
-                material.uniforms[key].value = effect.uniforms[key].value;
-              }
-            }
-            
-            // Last effect renders to screen
-            if (i === effects.length - 1) {
-              outputRenderer.setRenderTarget(null);
-              outputRenderer.clear();
-            } else {
-              outputRenderer.setRenderTarget(writeBuffer);
-              outputRenderer.clear();
-            }
-            
-            outputRenderer.render(effectScene, effectCamera);
-            
-            // Swap buffers
-            const temp = readBuffer;
-            readBuffer = writeBuffer;
-            writeBuffer = temp;
-          }
-          
-          outputRenderer.autoClear = true;
-        }
-        
-        lastFrameTime = now;
-      }
-      
-      requestAnimationFrame(renderLoop);
-    };
-    
-    renderLoop();
+
+  /** Called every frame after the main render to copy the result to the output window. */
+  blitToCompositionWindow() {
+    if (!this.compositionWindow || this.compositionWindow.closed || !this._outputCtx) return;
+    try {
+      const src = this.renderEngine.renderer.domElement;
+      this._outputCtx.drawImage(src, 0, 0,
+        this._outputCtx.canvas.width, this._outputCtx.canvas.height);
+    } catch (e) {
+      // Output window may have been closed
+    }
   }
 
   play() {
@@ -4125,6 +4019,7 @@ class WavJeApplication {
     }
 
     this.renderEngine.render();
+    this.blitToCompositionWindow();
     this.updateUI(audioData);
 
     const targetFrameTime = 1000 / this.config.targetFPS;

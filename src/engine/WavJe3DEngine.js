@@ -17,6 +17,7 @@ class WavJe3DEngine {
     this.renderer = new THREE.WebGLRenderer({
       antialias: true,
       powerPreference: 'high-performance',
+      preserveDrawingBuffer: true, // Required for drawImage blit to composition window
     });
     this.renderer.setSize(width, height);
     this.renderer.setPixelRatio(window.devicePixelRatio);
