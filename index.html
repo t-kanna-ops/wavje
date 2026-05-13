@@ -30,11 +30,8 @@
         </div>
       </div>
 
-      <!-- Right: Preview + Composition 480x640 -->
+      <!-- Right: Composition Settings 480x640 -->
       <div id="right-panel">
-        <div id="preview-container">
-          <div id="canvas-container"></div>
-        </div>
         <div id="composition-settings">
           <div class="panel-title">COMPOSITION SETTINGS</div>
           <div id="comp-controls"></div>
@@ -67,5 +64,7 @@
   </div>
 
   <script type="module" src="/src/main.js"></script>
+  <!-- Hidden Three.js canvas (off-screen, WebGL context stays alive) -->
+  <div id="canvas-container" style="position:fixed;left:-9999px;top:-9999px;width:1920px;height:1080px;overflow:hidden;pointer-events:none;"></div>
 </body>
 </html>

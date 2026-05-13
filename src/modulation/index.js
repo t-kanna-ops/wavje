@@ -256,9 +256,50 @@ class ModulationMatrix {
             }
           }
         }
-        // Add other target types as needed (layer, mixer)
+        // layer / mixer are handled by applyGlobalModulations()
       } catch (error) {
         console.error('❌ Modulation error:', error);
+      }
+    });
+  }
+
+  /**
+   * Apply modulations that target the Mixer (crossfader) or individual Layer opacities.
+   * Call this ONCE per animation frame.
+   *
+   * @param {object} audioData  – current audio analysis data
+   * @param {Mixer}  mixer      – the Mixer instance
+   * @param {{A: Deck, B: Deck}} decks – deck map
+   */
+  applyGlobalModulations(audioData, mixer, decks) {
+    if (!mixer && !decks) return;
+
+    this.modulations.forEach(mod => {
+      try {
+        const sourceValue = mod.source.getValue(this.midiData, audioData);
+        const scaledValue = Math.max(0, Math.min(1,
+          mod.min + sourceValue * (mod.max - mod.min)
+        ));
+
+        if (mod.targetType === 'mixer' && mixer) {
+          if (mod.paramName === 'crossfader') {
+            mixer.setCrossfader(scaledValue);
+          }
+        } else if (mod.targetType === 'layer' && decks) {
+          // targetId format: 'A-0', 'A-1', 'B-2', etc.
+          const parts = String(mod.targetId).split('-');
+          const deckKey = parts[0]; // 'A' or 'B'
+          const layerIdx = parseInt(parts[1]);
+          const deck = decks[deckKey];
+          if (deck && mod.paramName === 'opacity') {
+            const layer = deck.getLayer(layerIdx);
+            if (layer) {
+              layer.opacity = scaledValue;
+            }
+          }
+        }
+      } catch (error) {
+        console.error('❌ Global modulation error:', error);
       }
     });
   }

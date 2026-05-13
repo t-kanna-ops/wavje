@@ -84,6 +84,12 @@ class WavJeApplication {
     this.lastFrameTime = 0;
     this.animationId = null;
 
+    // Output window settings
+    this.outputWidth = 1920;
+    this.outputHeight = 1080;
+    this.outputFPS = 60;
+    this.compositionWindow = null;
+
     this.setupUI();
   }
 
@@ -371,6 +377,9 @@ class WavJeApplication {
     
     // Set initial focused layer
     this.focusLayer('A', 0);
+
+    // Open composition output window automatically
+    this.openCompositionWindow();
   }
 
   setupTransportPanel() {
@@ -735,12 +744,96 @@ class WavJeApplication {
     cfLabel.appendChild(cfSlider);
     crossfaderDiv.appendChild(cfLabel);
     deckControls.appendChild(crossfaderDiv);
+
+    // ── Global Modulation (Crossfader + Layer Opacity) ────────────
+    const globalModTitle = document.createElement('div');
+    globalModTitle.className = 'panel-title';
+    globalModTitle.textContent = 'MODULATION';
+    globalModTitle.style.marginTop = '14px';
+    deckControls.appendChild(globalModTitle);
+
+    const globalModAddBtn = document.createElement('button');
+    globalModAddBtn.textContent = '+ Add Modulation';
+    globalModAddBtn.style.cssText = 'width:100%;padding:6px;background:#553300;margin-bottom:6px;font-size:11px;cursor:pointer;';
+    globalModAddBtn.onclick = () => this.showGlobalModulationDialog();
+    deckControls.appendChild(globalModAddBtn);
+
+    this._globalModListDiv = document.createElement('div');
+    deckControls.appendChild(this._globalModListDiv);
+    this._refreshGlobalModList();
   }
 
   setupCompositionSettings() {
     const t = (key) => this.languageManager.t(key);
     const compControls = document.getElementById('comp-controls');
     compControls.innerHTML = ''; // Clear existing content
+
+    // ── Output Window Controls ─────────────────────────────────
+    const outSection = document.createElement('div');
+    outSection.style.cssText = 'margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #333;';
+
+    // Status line
+    const statusEl = document.createElement('div');
+    statusEl.style.cssText = 'font-size:11px;color:#888;margin-bottom:8px;min-height:16px;';
+    statusEl.textContent = '出力ウィンドウ: 未開';
+    this._compWindowStatusEl = statusEl;
+    outSection.appendChild(statusEl);
+
+    // Resolution selector
+    const resDiv = document.createElement('div');
+    resDiv.className = 'control-group';
+    resDiv.style.marginBottom = '8px';
+    const resLabel = document.createElement('label');
+    resLabel.style.cssText = 'display:block;margin-bottom:4px;font-size:12px;';
+    resLabel.textContent = '解像度 (Output Resolution):';
+    const resSelect = document.createElement('select');
+    resSelect.style.cssText = 'width:100%;padding:4px;background:#222;color:#fff;border:1px solid #444;';
+    const resOptions = [
+      { value: '640x480',   label: 'SD (640×480)' },
+      { value: '1280x720',  label: 'HD (1280×720)' },
+      { value: '1920x1080', label: 'FHD (1920×1080)', selected: true },
+      { value: '2560x1440', label: 'QHD (2560×1440)' },
+      { value: '3840x2160', label: '4K (3840×2160)' },
+    ];
+    resOptions.forEach(opt => {
+      const option = document.createElement('option');
+      option.value = opt.value; option.textContent = opt.label;
+      if (opt.selected) option.selected = true;
+      resSelect.appendChild(option);
+    });
+    resSelect.onchange = (e) => {
+      const [w, h] = e.target.value.split('x').map(v => parseInt(v));
+      this.outputWidth = w; this.outputHeight = h;
+    };
+    resDiv.appendChild(resLabel); resDiv.appendChild(resSelect);
+    outSection.appendChild(resDiv);
+
+    // FPS selector
+    const fpsDiv = document.createElement('div');
+    fpsDiv.className = 'control-group';
+    fpsDiv.style.marginBottom = '8px';
+    const fpsLabel = document.createElement('label');
+    fpsLabel.style.cssText = 'display:block;margin-bottom:4px;font-size:12px;';
+    fpsLabel.textContent = 'FPS (Output Frame Rate):';
+    const fpsSelect = document.createElement('select');
+    fpsSelect.style.cssText = 'width:100%;padding:4px;background:#222;color:#fff;border:1px solid #444;';
+    [['30','30 fps'],['60','60 fps (推奨)'],['120','120 fps']].forEach(([v,l]) => {
+      const o = document.createElement('option'); o.value = v; o.textContent = l;
+      if (v === '60') o.selected = true;
+      fpsSelect.appendChild(o);
+    });
+    fpsSelect.onchange = (e) => { this.outputFPS = parseInt(e.target.value); };
+    fpsDiv.appendChild(fpsLabel); fpsDiv.appendChild(fpsSelect);
+    outSection.appendChild(fpsDiv);
+
+    // Open / Reopen button
+    const openBtn = document.createElement('button');
+    openBtn.textContent = '🖥️ 出力ウィンドウを開く';
+    openBtn.style.cssText = 'width:100%;padding:10px;background:#0066cc;font-size:13px;font-weight:bold;cursor:pointer;';
+    openBtn.onclick = () => this.openCompositionWindow();
+    outSection.appendChild(openBtn);
+
+    compControls.appendChild(outSection);
 
     // Master Opacity Slider
     const opacityDiv = document.createElement('div');
@@ -770,41 +863,6 @@ class WavJeApplication {
     opacityDiv.appendChild(opacitySlider);
     opacityDiv.appendChild(opacityValue);
     compControls.appendChild(opacityDiv);
-
-    // Resolution Selector
-    const resDiv = document.createElement('div');
-    resDiv.className = 'control-group';
-    resDiv.style.marginBottom = '12px';
-    const resLabel = document.createElement('label');
-    resLabel.style.display = 'block';
-    resLabel.style.marginBottom = '4px';
-    resLabel.textContent = '解像度 (Resolution):';
-    const resSelect = document.createElement('select');
-    resSelect.style.width = '100%';
-    resSelect.style.padding = '4px';
-    const resOptions = [
-      { value: '640x480', label: 'SD (640x480)' },
-      { value: '1280x720', label: 'HD (1280x720)' },
-      { value: '1920x1080', label: 'FHD (1920x1080)', selected: true },
-      { value: '3840x2160', label: '4K (3840x2160)' }
-    ];
-    resOptions.forEach(opt => {
-      const option = document.createElement('option');
-      option.value = opt.value;
-      option.textContent = opt.label;
-      if (opt.selected) option.selected = true;
-      resSelect.appendChild(option);
-    });
-    resSelect.onchange = (e) => {
-      const [width, height] = e.target.value.split('x').map(v => parseInt(v));
-      if (this.renderEngine) {
-        this.renderEngine.setResolution(width, height);
-        console.log(`✓Resolution set to ${width}x${height}`);
-      }
-    };
-    resDiv.appendChild(resLabel);
-    resDiv.appendChild(resSelect);
-    compControls.appendChild(resDiv);
 
     // Camera Controls
     const cameraTitle = document.createElement('div');
@@ -972,16 +1030,6 @@ class WavJeApplication {
   setupDeviceSettings() {
     const t = (key) => this.languageManager.t(key);
     const deviceControls = document.getElementById('device-controls');
-    
-    // Video Output Window Button
-    const videoOutputBtn = document.createElement('button');
-    videoOutputBtn.textContent = '🖥️ 新規映像出力';
-    videoOutputBtn.style.width = '100%';
-    videoOutputBtn.style.marginBottom = '15px';
-    videoOutputBtn.style.padding = '12px';
-    videoOutputBtn.style.backgroundColor = '#0066cc';
-    videoOutputBtn.onclick = () => this.openVideoOutputWindow();
-    deviceControls.appendChild(videoOutputBtn);
 
     // Audio Output
     const audioOutDiv = document.createElement('div');
@@ -1036,110 +1084,6 @@ class WavJeApplication {
     setTimeout(() => {
       this.midiController.updateDeviceList();
     }, 500);
-
-    // ── MIDI Bridge (WMS対応 / loopMIDI代替) ───────────────────────────
-    const bridgeDiv = document.createElement('div');
-    bridgeDiv.className = 'control-group';
-    bridgeDiv.style.marginTop = '14px';
-    bridgeDiv.style.padding = '10px';
-    bridgeDiv.style.border = '1px solid #334';
-    bridgeDiv.style.borderRadius = '6px';
-    bridgeDiv.style.backgroundColor = '#0d0d1a';
-
-    const bridgeTitle = document.createElement('div');
-    bridgeTitle.textContent = '🔌 MIDI Bridge (WMS対応)';
-    bridgeTitle.style.fontWeight = 'bold';
-    bridgeTitle.style.marginBottom = '6px';
-    bridgeTitle.style.fontSize = '12px';
-    bridgeTitle.style.color = '#aac';
-    bridgeDiv.appendChild(bridgeTitle);
-
-    const bridgeHint = document.createElement('div');
-    bridgeHint.style.fontSize = '10px';
-    bridgeHint.style.color = '#667';
-    bridgeHint.style.marginBottom = '8px';
-    bridgeHint.textContent = 'loopMIDIが見えない場合: npm run bridge を実行してから接続';
-    bridgeDiv.appendChild(bridgeHint);
-
-    // ステータス
-    const bridgeStatus = document.createElement('div');
-    bridgeStatus.id = 'midi-bridge-status';
-    bridgeStatus.textContent = '⚫ 未接続';
-    bridgeStatus.style.fontSize = '11px';
-    bridgeStatus.style.marginBottom = '8px';
-    bridgeDiv.appendChild(bridgeStatus);
-
-    // 接続 URL 入力
-    const urlRow = document.createElement('div');
-    urlRow.style.display = 'flex';
-    urlRow.style.gap = '4px';
-    urlRow.style.marginBottom = '6px';
-    const urlInput = document.createElement('input');
-    urlInput.type = 'text';
-    urlInput.value = 'ws://localhost:9001';
-    urlInput.style.flex = '1';
-    urlInput.style.fontSize = '11px';
-    urlInput.style.padding = '3px 6px';
-    urlInput.style.backgroundColor = '#111';
-    urlInput.style.color = '#ccc';
-    urlInput.style.border = '1px solid #444';
-    urlInput.style.borderRadius = '3px';
-    const connectBtn = document.createElement('button');
-    connectBtn.textContent = '接続';
-    connectBtn.style.fontSize = '11px';
-    connectBtn.style.padding = '3px 8px';
-    connectBtn.onclick = () => {
-      if (this.midiController.bridgeSocket &&
-          this.midiController.bridgeSocket.readyState <= 1) {
-        this.midiController.disconnectBridge();
-        connectBtn.textContent = '接続';
-      } else {
-        this.midiController.connectBridge(urlInput.value.trim());
-        connectBtn.textContent = '切断';
-      }
-    };
-    urlRow.appendChild(urlInput);
-    urlRow.appendChild(connectBtn);
-    bridgeDiv.appendChild(urlRow);
-
-    // 入力ポート選択
-    const bridgeInLabel = document.createElement('label');
-    bridgeInLabel.style.fontSize = '11px';
-    bridgeInLabel.style.display = 'block';
-    bridgeInLabel.style.marginBottom = '4px';
-    bridgeInLabel.textContent = '受信ポート (MIDI→ブラウザ): ';
-    const bridgeInSelect = document.createElement('select');
-    bridgeInSelect.id = 'midi-bridge-input-select';
-    bridgeInSelect.style.width = '100%';
-    bridgeInSelect.style.fontSize = '11px';
-    bridgeInSelect.innerHTML = '<option value="">-- 接続後に表示 --</option>';
-    bridgeInLabel.appendChild(bridgeInSelect);
-    bridgeDiv.appendChild(bridgeInLabel);
-
-    // 出力ポート選択
-    const bridgeOutLabel = document.createElement('label');
-    bridgeOutLabel.style.fontSize = '11px';
-    bridgeOutLabel.style.display = 'block';
-    bridgeOutLabel.style.marginBottom = '4px';
-    bridgeOutLabel.textContent = '送信ポート (ブラウザ→DAW): ';
-    const bridgeOutSelect = document.createElement('select');
-    bridgeOutSelect.id = 'midi-bridge-output-select';
-    bridgeOutSelect.style.width = '100%';
-    bridgeOutSelect.style.fontSize = '11px';
-    bridgeOutSelect.innerHTML = '<option value="">-- 接続後に表示 --</option>';
-    bridgeOutLabel.appendChild(bridgeOutSelect);
-    bridgeDiv.appendChild(bridgeOutLabel);
-
-    // 再スキャンボタン
-    const bridgeRescanBtn = document.createElement('button');
-    bridgeRescanBtn.textContent = '🔄 ポート再スキャン';
-    bridgeRescanBtn.style.marginTop = '6px';
-    bridgeRescanBtn.style.width = '100%';
-    bridgeRescanBtn.style.fontSize = '11px';
-    bridgeRescanBtn.onclick = () => this.midiController.rescanBridgePorts();
-    bridgeDiv.appendChild(bridgeRescanBtn);
-
-    deviceControls.appendChild(bridgeDiv);
 
     // BPM Detection
     const bpmDiv = document.createElement('div');
@@ -2326,6 +2270,8 @@ class WavJeApplication {
     const paramLabel = (() => {
       if (mod.targetType === 'effect') return `[FX] ${mod.targetId.slice(0,8)} / ${mod.paramName}`;
       if (mod.targetType === 'generator') return `[Gen] ${mod.paramName}`;
+      if (mod.targetType === 'mixer') return `[CF] Crossfader`;
+      if (mod.targetType === 'layer') return `[${mod.targetId}] Opacity`;
       return `${mod.targetType} / ${mod.paramName}`;
     })();
     const srcSpan = document.createElement('span');
@@ -2656,6 +2602,245 @@ class WavJeApplication {
     inp.style.cssText='flex:1;background:#222;border:1px solid #444;color:#fff;padding:4px;';
     wrap.appendChild(lbl); wrap.appendChild(inp);
     return wrap;
+  }
+
+  // ── Global Modulation helpers (Crossfader + Layer Opacity) ──────
+
+  /** Returns modulations that target mixer or layer (global targets). */
+  _getGlobalModulations() {
+    if (!this.modulationMatrix) return [];
+    const result = [];
+    this.modulationMatrix.modulations.forEach((mod, index) => {
+      if (mod.targetType === 'mixer' || mod.targetType === 'layer') {
+        result.push({ mod, index });
+      }
+    });
+    return result;
+  }
+
+  /** Rebuild the global modulations list panel. */
+  _refreshGlobalModList() {
+    if (!this._globalModListDiv) return;
+    this._globalModListDiv.innerHTML = '';
+    const globalMods = this._getGlobalModulations();
+    if (globalMods.length === 0) {
+      const empty = document.createElement('div');
+      empty.style.cssText = 'padding:6px;background:#0a0a0a;border-radius:4px;color:#555;font-size:11px;margin-bottom:6px;';
+      empty.textContent = 'No modulations';
+      this._globalModListDiv.appendChild(empty);
+    } else {
+      globalMods.forEach(({ mod, index }) => {
+        this._globalModListDiv.appendChild(this._createGlobalModRow(mod, index));
+      });
+    }
+  }
+
+  /** Create a compact row for a global modulation entry. */
+  _createGlobalModRow(mod, globalIndex) {
+    const row = document.createElement('div');
+    row.style.cssText = 'background:#111;border:1px solid #333;border-radius:4px;padding:8px;margin-bottom:6px;font-size:11px;';
+
+    const label = mod.targetType === 'mixer'
+      ? '[CF] Crossfader'
+      : `[${mod.targetId}] Opacity`;
+
+    const top = document.createElement('div');
+    top.style.cssText = 'display:flex;justify-content:space-between;align-items:flex-start;gap:6px;';
+
+    const info = document.createElement('div');
+    info.style.flex = '1';
+    const srcSpan = document.createElement('span');
+    srcSpan.style.cssText = 'color:#aaa;';
+    srcSpan.textContent = this._modSourceLabel(mod);
+    info.innerHTML = `<div style="color:#ffcc88">${label}</div>`;
+    info.appendChild(srcSpan);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.textContent = '✕';
+    removeBtn.style.cssText = 'padding:2px 8px;background:#660000;font-size:11px;cursor:pointer;';
+    removeBtn.onclick = () => {
+      this.modulationMatrix.removeModulation(globalIndex);
+      this._refreshGlobalModList();
+    };
+
+    top.appendChild(info);
+    top.appendChild(removeBtn);
+    row.appendChild(top);
+
+    // Range row
+    const rangeRow = document.createElement('div');
+    rangeRow.style.cssText = 'display:flex;gap:8px;margin-top:6px;align-items:center;';
+    const makeRangeInput = (lbl, val, onChange) => {
+      const lblEl = document.createElement('span');
+      lblEl.style.cssText = 'color:#888;flex:0 0 24px;';
+      lblEl.textContent = lbl;
+      const inp = document.createElement('input');
+      inp.type = 'number'; inp.step = '0.01'; inp.value = val.toFixed(2);
+      inp.style.cssText = 'width:52px;background:#222;border:1px solid #444;color:#fff;padding:2px 4px;font-size:11px;';
+      inp.onchange = () => { onChange(parseFloat(inp.value) || 0); };
+      return [lblEl, inp];
+    };
+    const [minLbl, minInp] = makeRangeInput('Min', mod.min, v => { mod.min = v; });
+    const [maxLbl, maxInp] = makeRangeInput('Max', mod.max, v => { mod.max = v; });
+    rangeRow.append(minLbl, minInp, maxLbl, maxInp);
+    row.appendChild(rangeRow);
+
+    return row;
+  }
+
+  /** Dialog: add a modulation targeting crossfader or a layer's opacity. */
+  showGlobalModulationDialog() {
+    const targets = [
+      { label: 'Crossfader (A ↔ B)', targetType: 'mixer', targetId: 'crossfader', paramName: 'crossfader' },
+      { label: 'Deck A – Layer 0 Opacity', targetType: 'layer', targetId: 'A-0', paramName: 'opacity' },
+      { label: 'Deck A – Layer 1 Opacity', targetType: 'layer', targetId: 'A-1', paramName: 'opacity' },
+      { label: 'Deck A – Layer 2 Opacity', targetType: 'layer', targetId: 'A-2', paramName: 'opacity' },
+      { label: 'Deck B – Layer 0 Opacity', targetType: 'layer', targetId: 'B-0', paramName: 'opacity' },
+      { label: 'Deck B – Layer 1 Opacity', targetType: 'layer', targetId: 'B-1', paramName: 'opacity' },
+      { label: 'Deck B – Layer 2 Opacity', targetType: 'layer', targetId: 'B-2', paramName: 'opacity' },
+    ];
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;';
+
+    const dlg = document.createElement('div');
+    dlg.style.cssText = `position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+      background:#1a1a1a;border:2px solid #ff8800;padding:20px;z-index:10000;
+      min-width:320px;max-width:400px;max-height:85vh;overflow-y:auto;`;
+
+    const title = document.createElement('h3');
+    title.style.cssText = 'color:#ff8800;margin:0 0 14px;font-size:15px;';
+    title.textContent = 'Add Global Modulation';
+    dlg.appendChild(title);
+
+    // ── Target ──
+    this._dlgRow(dlg, 'Target');
+    const targetSel = document.createElement('select');
+    targetSel.style.cssText = 'width:100%;margin-bottom:12px;padding:5px;background:#222;color:#fff;border:1px solid #444;';
+    targets.forEach((t, i) => {
+      const o = document.createElement('option'); o.value = i; o.textContent = t.label;
+      targetSel.appendChild(o);
+    });
+    dlg.appendChild(targetSel);
+
+    // ── Source type ──
+    this._dlgRow(dlg, 'Source Type');
+    const srcSel = document.createElement('select');
+    srcSel.style.cssText = 'width:100%;margin-bottom:10px;padding:5px;background:#222;color:#fff;border:1px solid #444;';
+    [['lfo','LFO (oscillator)'],['audioBand','Audio Band'],['midiCC','MIDI CC'],
+     ['manual','Manual (fixed)'],['random','Random'],['bpm','BPM Trigger']].forEach(([v,l]) => {
+      const o = document.createElement('option'); o.value = v; o.textContent = l;
+      srcSel.appendChild(o);
+    });
+    dlg.appendChild(srcSel);
+
+    // ── Source config (dynamic) ──
+    const srcConfig = document.createElement('div');
+    srcConfig.style.marginBottom = '12px';
+    dlg.appendChild(srcConfig);
+
+    const buildSrcConfig = () => {
+      srcConfig.innerHTML = '';
+      const type = srcSel.value;
+      if (type === 'lfo') {
+        srcConfig.appendChild(this._dlgSlider('Frequency (Hz)', 'hz', 0.05, 10, 0.05, 1));
+        const wfDiv = document.createElement('div');
+        wfDiv.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:6px;';
+        const wfLbl = document.createElement('span'); wfLbl.style.cssText='color:#aaa;font-size:12px;flex:0 0 100px;'; wfLbl.textContent='Waveform';
+        const wfSel = document.createElement('select'); wfSel.name='waveform';
+        wfSel.style.cssText='flex:1;background:#222;color:#fff;border:1px solid #444;padding:3px;';
+        ['sine','triangle','square','sawtooth'].forEach(w => {
+          const o=document.createElement('option'); o.value=w; o.textContent=w; wfSel.appendChild(o);
+        });
+        wfDiv.appendChild(wfLbl); wfDiv.appendChild(wfSel); srcConfig.appendChild(wfDiv);
+        srcConfig.appendChild(this._dlgSlider('Gain', 'gain', 0, 3, 0.01, 1));
+      } else if (type === 'audioBand') {
+        const bDiv = document.createElement('div');
+        bDiv.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:6px;';
+        const bLbl = document.createElement('span'); bLbl.style.cssText='color:#aaa;font-size:12px;flex:0 0 100px;'; bLbl.textContent='Band';
+        const bSel = document.createElement('select'); bSel.name='band';
+        bSel.style.cssText='flex:1;background:#222;color:#fff;border:1px solid #444;padding:3px;';
+        [['low','Low (kick)'],['lowMid','Low-Mid'],['highMid','High-Mid'],['high','High'],['volume','Volume']].forEach(([v,l])=>{
+          const o=document.createElement('option'); o.value=v; o.textContent=l; bSel.appendChild(o);
+        });
+        bDiv.appendChild(bLbl); bDiv.appendChild(bSel); srcConfig.appendChild(bDiv);
+        srcConfig.appendChild(this._dlgSlider('Gain', 'gain', 0, 3, 0.01, 1));
+        srcConfig.appendChild(this._dlgSlider('Threshold', 'threshold', 0, 1, 0.01, 0));
+      } else if (type === 'midiCC') {
+        srcConfig.appendChild(this._dlgNumberInput('CC Number (0-127)', 'ccNumber', 0, 127, 1, 0));
+        srcConfig.appendChild(this._dlgSlider('Gain', 'gain', 0, 3, 0.01, 1));
+      } else if (type === 'manual') {
+        srcConfig.appendChild(this._dlgSlider('Value', 'value', 0, 1, 0.01, 0.5));
+      } else if (type === 'random') {
+        srcConfig.appendChild(this._dlgSlider('Gain', 'gain', 0, 1, 0.01, 1));
+      } else if (type === 'bpm') {
+        srcConfig.appendChild(this._dlgNumberInput('BPM', 'bpm', 40, 300, 1, 120));
+        const divDiv = document.createElement('div');
+        divDiv.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:6px;';
+        const divLbl = document.createElement('span'); divLbl.style.cssText='color:#aaa;font-size:12px;flex:0 0 100px;'; divLbl.textContent='Division';
+        const divSel = document.createElement('select'); divSel.name='division';
+        divSel.style.cssText='flex:1;background:#222;color:#fff;border:1px solid #444;padding:3px;';
+        [['1','1 bar'],['0.5','1/2'],['0.25','1/4'],['0.125','1/8'],['0.0625','1/16']].forEach(([v,l])=>{
+          const o=document.createElement('option'); o.value=v; o.textContent=l; divSel.appendChild(o);
+        });
+        divDiv.appendChild(divLbl); divDiv.appendChild(divSel); srcConfig.appendChild(divDiv);
+      }
+    };
+    srcSel.onchange = buildSrcConfig;
+    buildSrcConfig();
+
+    // ── Range ──
+    this._dlgRow(dlg, 'Output Range (0–1)');
+    const rangeWrap = document.createElement('div');
+    rangeWrap.style.cssText = 'display:flex;gap:10px;margin-bottom:14px;';
+    const mkNumInp = (lbl, val) => {
+      const w = document.createElement('div'); w.style.flex='1';
+      const l = document.createElement('div'); l.style.cssText='font-size:11px;color:#aaa;margin-bottom:3px;'; l.textContent=lbl;
+      const inp = document.createElement('input'); inp.type='number'; inp.step='0.01'; inp.value=val;
+      inp.style.cssText='width:100%;background:#222;border:1px solid #444;color:#fff;padding:4px;';
+      w.appendChild(l); w.appendChild(inp);
+      return w;
+    };
+    const minWrap = mkNumInp('Min', 0);
+    const maxWrap = mkNumInp('Max', 1);
+    rangeWrap.appendChild(minWrap); rangeWrap.appendChild(maxWrap);
+    dlg.appendChild(rangeWrap);
+
+    // ── Buttons ──
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:8px;';
+
+    const addBtn = document.createElement('button');
+    addBtn.textContent = 'Add';
+    addBtn.style.cssText = 'flex:1;padding:10px;background:#884400;font-weight:bold;cursor:pointer;';
+    addBtn.onclick = () => {
+      const tDef = targets[parseInt(targetSel.value)];
+      const srcType = srcSel.value;
+      const srcParams = {};
+      srcConfig.querySelectorAll('input[name], select[name]').forEach(el => {
+        srcParams[el.name] = isNaN(el.value) ? el.value : parseFloat(el.value);
+      });
+      const source = new ModulationSource(srcType, srcParams);
+      const mod = new Modulation(tDef.targetType, tDef.targetId, tDef.paramName, source);
+      mod.min = parseFloat(minWrap.querySelector('input').value) || 0;
+      mod.max = parseFloat(maxWrap.querySelector('input').value) || 1;
+      this.modulationMatrix.addModulation(mod);
+      document.body.removeChild(overlay);
+      document.body.removeChild(dlg);
+      this._refreshGlobalModList();
+    };
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.style.cssText = 'flex:1;padding:10px;background:#333;cursor:pointer;';
+    cancelBtn.onclick = () => { document.body.removeChild(overlay); document.body.removeChild(dlg); };
+    overlay.onclick = cancelBtn.onclick;
+
+    btnRow.appendChild(addBtn); btnRow.appendChild(cancelBtn);
+    dlg.appendChild(btnRow);
+
+    document.body.appendChild(overlay);
+    document.body.appendChild(dlg);
   }
 
   getEffectManagerForClip(clip) {
@@ -3555,82 +3740,56 @@ class WavJeApplication {
     }
   }
   
-  openVideoOutputWindow() {
-    // Prompt for resolution and FPS
-    const resolutionInput = prompt('解像度を入力 (例: 1920x1080):', '1920x1080');
-    if (!resolutionInput) return;
-    
-    const fpsInput = prompt('FPSを入力 (例: 60):', '60');
-    if (!fpsInput) return;
-    
-    const [width, height] = resolutionInput.split('x').map(v => parseInt(v.trim()));
-    const fps = parseInt(fpsInput);
-    
-    if (!width || !height || !fps) {
-      alert('無効な入力です');
+  openCompositionWindow() {
+    const width = this.outputWidth || 1920;
+    const height = this.outputHeight || 1080;
+    const fps = this.outputFPS || 60;
+
+    // Close existing window if open
+    if (this.compositionWindow && !this.compositionWindow.closed) {
+      this.compositionWindow.close();
+    }
+
+    const win = window.open('', 'WavJe_Composition',
+      `width=${width},height=${height},menubar=no,toolbar=no,location=no,status=no,scrollbars=no`);
+    if (!win) {
+      // Popup was blocked – update status in UI
+      if (this._compWindowStatusEl) {
+        this._compWindowStatusEl.textContent = '⚠ ポップアップがブロックされています。下のボタンで手動で開いてください。';
+        this._compWindowStatusEl.style.color = '#ff4444';
+      }
+      console.warn('⚠ Composition window popup was blocked');
       return;
     }
-    
-    // Open new window
-    const outputWindow = window.open('', 'VJ Output', `width=${width},height=${height}`);
-    if (!outputWindow) {
-      alert('ポップアップがブロックされました。ブラウザの設定を確認してください。');
-      return;
-    }
-    
-    // Setup output window
-    outputWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>WavJe - Video Output</title>
-        <style>
-          body {
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            background: #000;
-          }
-          canvas {
-            display: block;
-            width: 100%;
-            height: 100%;
-          }
-        </style>
-      </head>
-      <body>
-        <canvas id="output-canvas"></canvas>
-      </body>
-      </html>
-    `);
-    outputWindow.document.close();
-    
-    // Create output renderer
-    const outputCanvas = outputWindow.document.getElementById('output-canvas');
+
+    win.document.write(`<!DOCTYPE html><html><head>
+      <title>WavJe – Composition Output</title>
+      <style>body{margin:0;padding:0;overflow:hidden;background:#000;}canvas{display:block;width:100%;height:100%;}</style>
+    </head><body><canvas id="output-canvas"></canvas></body></html>`);
+    win.document.close();
+
+    const outputCanvas = win.document.getElementById('output-canvas');
     outputCanvas.width = width;
     outputCanvas.height = height;
-    
-    const outputRenderer = new THREE.WebGLRenderer({ 
-      canvas: outputCanvas, 
-      antialias: true,
-      alpha: false
-    });
+
+    const outputRenderer = new THREE.WebGLRenderer({ canvas: outputCanvas, antialias: true, alpha: false });
     outputRenderer.setSize(width, height);
     outputRenderer.setPixelRatio(1);
-    
-    // Store reference for cleanup
-    if (!this.outputWindows) this.outputWindows = [];
-    this.outputWindows.push({
-      window: outputWindow,
-      renderer: outputRenderer,
-      canvas: outputCanvas,
-      fps: fps
-    });
-    
-    console.log(`✓Video output window opened: ${width}x${height} @ ${fps}fps`);
-    
-    // Start rendering loop for this output
-    this.startOutputRendering(outputWindow, outputRenderer, fps);
+
+    this.compositionWindow = win;
+
+    if (this._compWindowStatusEl) {
+      this._compWindowStatusEl.textContent = `✓ 出力ウィンドウ: ${width}×${height} @ ${fps}fps`;
+      this._compWindowStatusEl.style.color = '#44ff88';
+    }
+    console.log(`✓ Composition window opened: ${width}x${height} @ ${fps}fps`);
+
+    this.startOutputRendering(win, outputRenderer, fps);
+  }
+
+  openVideoOutputWindow() {
+    // Legacy: delegate to new method
+    this.openCompositionWindow();
   }
   
   startOutputRendering(outputWindow, outputRenderer, targetFPS) {
@@ -3873,6 +4032,8 @@ class WavJeApplication {
           }
         });
       });
+      // Apply global modulations (crossfader + layer opacity)
+      this.modulationMatrix.applyGlobalModulations(audioData, this.mixer, { A: this.deckA, B: this.deckB });
     }
 
     // Phase 2: Text Renderer
