@@ -3845,6 +3845,7 @@ class WavJeApplication {
   openCompositionWindow() {
     const width = this.outputWidth || 1920;
     const height = this.outputHeight || 1080;
+    const fps = this.outputFPS || 60;
 
     // Close existing window if open
     if (this.compositionWindow && !this.compositionWindow.closed) {
@@ -3862,25 +3863,47 @@ class WavJeApplication {
       return;
     }
 
-    // Use a 2D canvas in the output window and blit from the main renderer canvas
+    // Capture main renderer canvas as a MediaStream and pipe to <video> in output window.
+    // This is zero-copy hardware-accelerated (no GPU→CPU readback) and works at any resolution.
+    const srcCanvas = this.renderEngine.renderer.domElement;
+    let stream;
+    if (typeof srcCanvas.captureStream === 'function') {
+      stream = srcCanvas.captureStream(fps);
+    } else {
+      console.warn('⚠ captureStream not supported – falling back to drawImage');
+      this._useBlit = true;
+    }
+
     win.document.write(`<!DOCTYPE html><html><head>
       <title>WavJe – Composition Output</title>
-      <style>*{margin:0;padding:0;}body{overflow:hidden;background:#000;}canvas{display:block;width:100vw;height:100vh;}</style>
-    </head><body><canvas id="output-canvas"></canvas></body></html>`);
+      <style>*{margin:0;padding:0;}body{overflow:hidden;background:#000;}
+      video,canvas{display:block;width:100vw;height:100vh;object-fit:contain;}</style>
+    </head><body>${stream ? '<video id="out" autoplay muted playsinline></video>' : '<canvas id="out"></canvas>'}</body></html>`);
     win.document.close();
 
-    const outputCanvas = win.document.getElementById('output-canvas');
-    outputCanvas.width = width;
-    outputCanvas.height = height;
-    this._outputCtx = outputCanvas.getContext('2d');
+    if (stream) {
+      const video = win.document.getElementById('out');
+      video.srcObject = stream;
+      this._outputCtx = null;
+      this._useBlit = false;
+    } else {
+      // Fallback: drawImage blit
+      const canvas = win.document.getElementById('out');
+      canvas.width = width;
+      canvas.height = height;
+      this._outputCtx = canvas.getContext('2d');
+      this._useBlit = true;
+    }
 
     this.compositionWindow = win;
 
     if (this._compWindowStatusEl) {
-      this._compWindowStatusEl.textContent = `✓ 出力ウィンドウ: ${width}×${height}`;
+      this._compWindowStatusEl.textContent = stream
+        ? `✓ 出力ウィンドウ: ${width}×${height} @ ${fps}fps (stream)`
+        : `✓ 出力ウィンドウ: ${width}×${height} (fallback)`;
       this._compWindowStatusEl.style.color = '#44ff88';
     }
-    console.log(`✓ Composition window opened (blit mode): ${width}x${height}`);
+    console.log(`✓ Composition window opened (${stream ? 'captureStream' : 'blit fallback'}): ${width}x${height} @ ${fps}fps`);
   }
 
   openVideoOutputWindow() {
@@ -3888,9 +3911,9 @@ class WavJeApplication {
     this.openCompositionWindow();
   }
 
-  /** Called every frame after the main render to copy the result to the output window. */
+  /** Called every frame after the main render – only needed for the fallback blit path. */
   blitToCompositionWindow() {
-    if (!this.compositionWindow || this.compositionWindow.closed || !this._outputCtx) return;
+    if (!this._useBlit || !this.compositionWindow || this.compositionWindow.closed || !this._outputCtx) return;
     try {
       const src = this.renderEngine.renderer.domElement;
       this._outputCtx.drawImage(src, 0, 0,
