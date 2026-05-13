@@ -19,7 +19,7 @@ class WavJe3DEngine {
       powerPreference: 'high-performance',
     });
     this.renderer.setSize(width, height);
-    this.renderer.setPixelRatio(window.devicePixelRatio);
+    this.renderer.setPixelRatio(1); // Always 1: canvas is off-screen, captureStream handles resolution
     this.renderer.shadowMap.enabled = true;
     container.appendChild(this.renderer.domElement);
     
@@ -399,8 +399,14 @@ class WavJe3DEngine {
   
   setResolution(width, height) {
     this.renderer.setSize(width, height);
+    this.renderer.setPixelRatio(1);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
+    // Resize render targets to match new resolution
+    if (this.renderTarget1) {
+      this.renderTarget1.setSize(width, height);
+      this.renderTarget2.setSize(width, height);
+    }
     console.log(`✓ Resolution changed to ${width}x${height}`);
   }
 }

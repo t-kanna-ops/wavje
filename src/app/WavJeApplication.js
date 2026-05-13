@@ -3852,6 +3852,14 @@ class WavJeApplication {
       this.compositionWindow.close();
     }
 
+    // Resize the main renderer to the exact output resolution BEFORE captureStream.
+    // Canvas is off-screen so no UI change. captureStream then produces a stream at
+    // exactly (width x height) → the output window shows it at 1:1 with zero upscaling,
+    // eliminating the GPU compositor overhead that caused FPS drops at large resolutions.
+    if (this.renderEngine) {
+      this.renderEngine.setResolution(width, height);
+    }
+
     const win = window.open('', 'WavJe_Composition',
       `width=${width},height=${height},menubar=no,toolbar=no,location=no,status=no,scrollbars=no`);
     if (!win) {
@@ -3873,6 +3881,38 @@ class WavJeApplication {
       console.warn('⚠ captureStream not supported – falling back to drawImage');
       this._useBlit = true;
     }
+
+    win.document.write(`<!DOCTYPE html><html><head>
+      <title>WavJe – Composition Output</title>
+      <style>*{margin:0;padding:0;}body{overflow:hidden;background:#000;}
+      video,canvas{display:block;width:100vw;height:100vh;object-fit:contain;}</style>
+    </head><body>${stream ? '<video id="out" autoplay muted playsinline></video>' : '<canvas id="out"></canvas>'}</body></html>`);
+    win.document.close();
+
+    if (stream) {
+      const video = win.document.getElementById('out');
+      video.srcObject = stream;
+      this._outputCtx = null;
+      this._useBlit = false;
+    } else {
+      // Fallback: drawImage blit
+      const canvas = win.document.getElementById('out');
+      canvas.width = width;
+      canvas.height = height;
+      this._outputCtx = canvas.getContext('2d');
+      this._useBlit = true;
+    }
+
+    this.compositionWindow = win;
+
+    if (this._compWindowStatusEl) {
+      this._compWindowStatusEl.textContent = stream
+        ? `✓ 出力ウィンドウ: ${width}×${height} @ ${fps}fps (stream)`
+        : `✓ 出力ウィンドウ: ${width}×${height} (fallback)`;
+      this._compWindowStatusEl.style.color = '#44ff88';
+    }
+    console.log(`✓ Composition window opened (${stream ? 'captureStream' : 'blit fallback'}): ${width}x${height} @ ${fps}fps`);
+  }
 
     win.document.write(`<!DOCTYPE html><html><head>
       <title>WavJe – Composition Output</title>
